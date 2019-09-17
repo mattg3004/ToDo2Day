@@ -1,9 +1,10 @@
-<ion-header>
-  <ion-toolbar>
-    <ion-title>rofile</ion-title>
-  </ion-toolbar>
-</ion-header>
+<ion-toolbar padding>
+  <ion-title>Profile</ion-title>
+</ion-toolbar>
+
 
 <ion-content>
+  <h1>{{user.displayName}}</h1>
 
+  <ion-button color="primary" (click)="signOut()">Sign Out</ion-button>
 </ion-content>
