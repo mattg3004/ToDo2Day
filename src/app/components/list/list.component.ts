@@ -3,6 +3,7 @@ import { AngularFireAuth } from '@angular/fire/auth';
 import { AngularFirestore } from '@angular/fire/firestore';
 import { AlertController } from '@ionic/angular';
 
+const MAX_LIST_SIZE = 100;
 @Component({
   selector: 'app-list',
   templateUrl: './list.component.html',
@@ -27,7 +28,11 @@ export class ListComponent implements OnInit {
         return;
       }
       this.db.collection(`users/${this.afAuth.auth.currentUser.uid}/${this.name}`, ref => {
-        return ref.orderBy('pos', 'desc');
+        let query = ref.orderBy('pos', 'desc');
+        if (this.name === 'done') {
+          query = query.limit(MAX_LIST_SIZE);
+        }
+        return query;
       }).snapshotChanges().subscribe(colSnap => {
         this.items = [];
         console.log(colSnap.length);
@@ -42,8 +47,17 @@ export class ListComponent implements OnInit {
   }
 
   async add() {
+    this.addOrEdit('New Task',  val => this.handleAddItem(val.task)
+    );
+  }
+
+  async edit(item) {
+    this.addOrEdit('Edit Task', val => this.handleEditItem(val.task, item), item);
+  }
+
+  async addOrEdit(header, handler, item?) {
     const alert = await this.alertCtrl.create({
-      header: 'New Task',
+      header,
       buttons: [
         {
           text: 'Cancel',
@@ -53,17 +67,7 @@ export class ListComponent implements OnInit {
           }
         }, {
           text: 'OK',
-          handler: (val) => {
-            console.log(`${this.afAuth.auth.currentUser.uid}`);
-            const now = new Date();
-            const nowUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(),
-            now.getUTCDate(), now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds()));
-            this.db.collection(`users/${this.afAuth.auth.currentUser.uid}/${this.name}`).add({
-              text: val.task,
-              pos:  this.items.length ? this.items[0].pos + 1 : 0,
-              created: nowUtc,
-            });
-          }
+          handler,
 
         }
       ],
@@ -71,12 +75,57 @@ export class ListComponent implements OnInit {
         {
           name: 'task',
           type: 'text',
-          placeholder: 'Next task'
+          placeholder: 'Next task',
+          value: item ?  item.text : '' ,
         }
       ]
     });
-    return await alert.present();
+    await alert.present();
+
+    alert.getElementsByTagName('input')[0].focus();
+
+    alert.addEventListener('keydown', (val => {
+      if (val.keyCode === 13) {
+        this.handleAddItem(val.srcElement['value']);
+        alert.dismiss();
+      }
+    }));
   }
+
+  handleAddItem(text: string) {
+    if (!text.trim().length) {
+      return;
+    }
+
+    let now = new Date();
+    let nowUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(),
+      now.getUTCDate(), now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds()));
+
+    this.db.collection(`users/${this.afAuth.auth.currentUser.uid}/${this.name}`).add({
+      text,
+      pos: this.items.length ? this.items[0].pos + 1 : 0,
+      created: nowUtc,
+    });
+
+    if (this.items.length >= MAX_LIST_SIZE) {
+      this.alertCtrl.create({
+        header: 'Critical Oveload',
+        subHeader: 'Too many important items!',
+        message: `You have over ${MAX_LIST_SIZE} items in this list,
+only showing the top ${MAX_LIST_SIZE}.`,
+        buttons: ['Okay'],
+      }).then(warning => {
+        warning.present();
+      });
+    }
+  }
+
+  handleEditItem(text: string, item) {
+    this.db.doc(`users/${this.afAuth.auth.currentUser.uid}/${this.name}/${item.id}`).set({
+      text,
+    }, {merge: true});
+  }
+
 
   delete(item) {
     this.db.doc(`users/${this.afAuth.auth.currentUser.uid}/${this.name}/${item.id}`).delete();
@@ -109,4 +158,13 @@ export class ListComponent implements OnInit {
     });
   }
 
+  moveByOffset(index, offset) {
+    this.db.doc(`users/${this.afAuth.auth.currentUser.uid}/${this.name}/${this.items[index].id}`).set({
+      pos: this.items[index-offset].pos
+    }, {merge: true});
+    this.db.doc(`users/${this.afAuth.auth.currentUser.uid}/${this.name}/${this.items[index-offset].id}`).set({
+      pos: this.items[index].pos
+    }, {merge: true});
+  }
 }
+
